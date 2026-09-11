@@ -1,0 +1,88 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Git Clone') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/BalajiMaharajan26/code-base.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    python3 --version
+                    python3 -m venv venv
+                    ./venv/bin/pip install --upgrade pip
+                    ./venv/bin/pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    ./venv/bin/python -m py_compile app.py
+                    echo "Python syntax test passed"
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build -t balaji-flask-app:latest .
+                '''
+            }
+        }
+
+        stage('Docker Run') {
+            steps {
+                sh '''
+                    echo "Removing old container if it exists..."
+                    docker rm -f balaji-flask-container || true
+
+                    echo "Starting Flask container..."
+
+                    docker run -d \
+                        --name balaji-flask-container \
+                        -p 5000:5000 \
+                        balaji-flask-app:latest
+
+                    echo "Waiting for application to start..."
+                    sleep 5
+
+                    echo "===== Container Status ====="
+                    docker ps -a
+
+                    echo "===== Container Logs ====="
+                    docker logs balaji-flask-container
+                '''
+            }
+        }
+
+        stage('Application Test') {
+            steps {
+                sh '''
+                    echo "Testing Flask application..."
+
+                    docker exec balaji-flask-container \
+                        python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000').read().decode())"
+
+                    echo "Application test passed"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                echo "Cleaning up Docker container..."
+                docker rm -f balaji-flask-container || true
+            '''
+        }
+    }
+}
